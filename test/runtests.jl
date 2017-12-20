@@ -1,8 +1,16 @@
 using Revise
-using Test
+using Test, Unicode
 using DataStructures: OrderedSet
 
 to_remove = String[]
+
+const rseed = Ref(Base.GLOBAL_RNG)  # to get new random directories (see #24445)
+function randtmp()
+    srand(rseed[])
+    dirname = joinpath(tempdir(), randstring(10))
+    rseed[] = Base.GLOBAL_RNG
+    dirname
+end
 
 function errsource()
     stacktrace(catch_backtrace())[2]
@@ -39,7 +47,7 @@ end
     end
 
     @testset "Parse errors" begin
-        warnfile = joinpath(tempdir(), randstring(10))
+        warnfile = randtmp()
         open(warnfile, "w") do io
             redirect_stderr(io) do
                 md = Revise.ModDict(Main=>Revise.ExprsSigs())
@@ -109,7 +117,7 @@ k(x) = 4
     end
 
     @testset "File paths" begin
-        testdir = joinpath(tempdir(), randstring(10))
+        testdir = randtmp()
         mkdir(testdir)
         push!(to_remove, testdir)
         push!(LOAD_PATH, testdir)
@@ -294,7 +302,7 @@ end
 
     # issue #36
     @testset "@__FILE__" begin
-        testdir = joinpath(tempdir(), randstring(10))
+        testdir = randtmp()
         mkdir(testdir)
         push!(to_remove, testdir)
         push!(LOAD_PATH, testdir)
@@ -331,7 +339,7 @@ end
 
     # issue #8
     @testset "Module docstring" begin
-        testdir = joinpath(tempdir(), randstring(10))
+        testdir = randtmp()
         mkdir(testdir)
         push!(to_remove, testdir)
         push!(LOAD_PATH, testdir)
@@ -397,7 +405,7 @@ end
 
     @testset "Line numbers" begin
         # issue #27
-        testdir = joinpath(tempdir(), randstring(10))
+        testdir = randtmp()
         mkdir(testdir)
         push!(to_remove, testdir)
         push!(LOAD_PATH, testdir)
@@ -471,7 +479,7 @@ foo(y::Int) = y-51
 
     # Issue #43
     @testset "New submodules" begin
-        testdir = joinpath(tempdir(), randstring(10))
+        testdir = randtmp()
         mkdir(testdir)
         push!(to_remove, testdir)
         push!(LOAD_PATH, testdir)
@@ -504,7 +512,7 @@ end
 
     @testset "Method deletion" begin
         eval(Base, :(revisefoo(x::Float64) = 1)) # to test cross-module method scoping
-        testdir = joinpath(tempdir(), randstring(10))
+        testdir = randtmp()
         mkdir(testdir)
         push!(to_remove, testdir)
         push!(LOAD_PATH, testdir)
@@ -632,7 +640,7 @@ revise_f(x) = 2
     end
 
     @testset "Cleanup" begin
-        warnfile = joinpath(tempdir(), randstring(10))
+        warnfile = randtmp()
         open(warnfile, "w") do io
             redirect_stderr(io) do
                 for name in to_remove
