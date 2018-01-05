@@ -302,6 +302,28 @@ function read_from_cache(fm::FileModules, file::AbstractString)
     Base.read_dependency_src(fm.cachefile, file)
 end
 
+function read_from_git(path::AbstractString)
+    repo_file = basename(path)
+    repo_dir = dirname(path)
+    while true
+        # check if we are at the repo root
+        git_dir = joinpath(repo_dir, ".git")
+        if isdir(git_dir)
+            return readstring(`git -C $repo_dir show HEAD:$repo_file`)
+        end
+
+        # traverse to parent folder
+        previous = repo_dir
+        subdir = basename(repo_dir)
+        repo_dir = dirname(repo_dir)
+        repo_file = joinpath(subdir, repo_file)
+
+        if previous == repo_dir
+            return nothing
+        end
+    end
+end
+
 """
     revise()
 
@@ -335,10 +357,22 @@ Watch `file` for updates and [`revise`](@ref) loaded code with any
 changes. `mod` is the module into which `file` is evaluated; if omitted,
 it defaults to `Main`.
 """
-function track(mod::Module, file::AbstractString)
+function track(mod::Module, file::AbstractString; reference::Symbol=:current)
     isfile(file) || error(file, " is not a file")
     file = normpath(abspath(file))
-    pr = parse_source(file, mod)
+    pr = if reference == :current
+    parse_source(file, mod)
+    elseif reference == :git
+        src = read_from_git(file)
+        md = ModDict(mod=>OrderedSet{RelocatableExpr}())
+        if !parse_source!(md, src, Symbol(file), 1, mod)
+            warn("failed to parse cache file source text for ", file)
+        end
+        fm = FileModules(mod, md)
+        String(file) => fm
+    else
+        error("Invalid tracking reference $reference")
+    end
     if isa(pr, Pair)
         push!(file2modules, pr)
     end
@@ -497,5 +531,19 @@ end
 Base.push!(wl::WatchList, filename) = push!(wl.trackedfiles, filename)
 WatchList() = WatchList(Dates.datetime2unix(now()), Set{String}())
 Base.in(file, wl::WatchList) = in(file, wl.trackedfiles)
+
+
+
+function track_inference()
+    files = map(x->x[2], Base._included_files)
+    sysimg = filter(x->endswith(x, "sysimg.jl"), files)[1]
+    srcdir = dirname(sysimg)
+
+    track(Base) # optional
+
+    inference = joinpath(srcdir, "inference.jl")
+    track(Core.Inference, inference; reference=:git)
+    revise_file_now(inference)
+end
 
 end # module
